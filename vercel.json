@@ -1,8 +1,15 @@
 {
-  "build": {
-    "env": {
-      "YARN_CACHE_FOLDER": "/tmp/yarn-cache"
-    },
-    "command": "npm install && npm run build"
-  }
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/server.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "src/server.ts"
+    }
+  ]
 }
