@@ -1,0 +1,8 @@
+{
+  "build": {
+    "env": {
+      "YARN_CACHE_FOLDER": "/tmp/yarn-cache"
+    },
+    "command": "npm install && npm run build"
+  }
+}
