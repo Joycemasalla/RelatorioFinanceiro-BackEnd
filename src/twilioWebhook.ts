@@ -5,6 +5,7 @@ import { getCategoryFromDescription } from './utils/categoryUtils';
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import dotenv from 'dotenv';
+import axios from 'axios';
 
 dotenv.config();
 
@@ -15,25 +16,28 @@ const twilioClient = new Twilio(
 );
 
 router.post('/twilio-webhook', async (req: Request, res: Response) => {
-  console.log('--- Webhook recebido ---');
-  console.log('Corpo da requisição:', req.body);
-
   const incomingMessage = req.body.Body;
-  const from = req.body.From;
+  const from = req.body.From; // Ex: whatsapp:+553288949994
+  const userId = req.body.WaId; // O ID único do usuário no WhatsApp
+
+  console.log('--- Webhook recebido ---');
+  console.log('Mensagem de:', from, ' | Corpo:', incomingMessage, ' | UserID:', userId);
 
   try {
-    if (!incomingMessage) {
-        console.log('Mensagem de entrada vazia. Ignorando.');
-        return res.status(400).send('Mensagem de entrada vazia.');
+    if (!incomingMessage || !userId) {
+        console.log('Mensagem ou UserID inválido. Ignorando.');
+        return res.status(400).send('Mensagem ou UserID inválido.');
     }
 
     const lowerCaseMessage = incomingMessage.toLowerCase().trim();
-    console.log('Mensagem processada:', lowerCaseMessage);
     
+    let replyMessage = '';
+
+    // --- Lógica para comando "Relatório" ---
     let startDate: Date | null = null;
     let endDate: Date | null = null;
     let reportTitle = '';
-
+    
     if (lowerCaseMessage.includes('relatório do mês') || lowerCaseMessage.includes('gastos do mês')) {
       startDate = startOfMonth(new Date());
       endDate = endOfMonth(new Date());
@@ -51,17 +55,16 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       endDate = endOfDay(new Date());
       reportTitle = `Relatório de Hoje, ${format(new Date(), 'dd/MM/yyyy')}`;
     }
-    
+
     if (startDate && endDate) {
-      console.log('Requisitado um relatório. Buscando transações de', startDate, 'a', endDate);
       const transactions = await Transaction.find({
+        userId, // Filtra por usuário
         createdAt: {
           $gte: startDate,
           $lte: endDate
         },
         type: 'expense'
       });
-      console.log(`Encontradas ${transactions.length} transações.`);
 
       const totalExpenses = transactions.reduce((sum: number, t: ITransaction) => sum + t.amount, 0);
 
@@ -70,30 +73,52 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
         expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
       });
 
-      let reportMessage = `${reportTitle}\n\n`;
-      reportMessage += `Gasto total: R$ ${totalExpenses.toFixed(2)}\n\n`;
+      replyMessage += `${reportTitle}\n\n`;
+      replyMessage += `Gasto total: R$ ${totalExpenses.toFixed(2)}\n\n`;
       
       if (transactions.length > 0) {
+          replyMessage += 'Distribuição por Categoria:\n';
           for (const category in expensesByCategory) {
-            reportMessage += `- ${category}: R$ ${expensesByCategory[category].toFixed(2)}\n`;
+            replyMessage += `- ${category}: R$ ${expensesByCategory[category].toFixed(2)}\n`;
           }
       } else {
-          reportMessage += 'Nenhum gasto encontrado neste período.';
+          replyMessage += 'Nenhum gasto encontrado neste período.';
       }
-      
-      console.log('Mensagem de relatório a ser enviada:', reportMessage);
-      
-      await twilioClient.messages.create({
-        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
-        to: from,
-        body: reportMessage
-      });
-      return res.status(200).send('Webhook received - report sent');
+    }
+    
+    // --- Nova Lógica para comando "Apagar" ---
+    const deleteRegex = /(apagar|remover|excluir)\s*(\S+)/i;
+    const deleteMatch = lowerCaseMessage.match(deleteRegex);
+
+    if (deleteMatch) {
+      const transactionId = deleteMatch[2];
+      const transaction = await Transaction.findOneAndDelete({ _id: transactionId, userId });
+
+      if (transaction) {
+        replyMessage = `Transação "${transaction.description}" (ID: ${transaction._id}) foi excluída com sucesso.`;
+      } else {
+        replyMessage = `Não foi possível encontrar a transação com ID "${transactionId}" ou você não tem permissão para excluí-la.`;
+      }
     }
 
-    // Lógica Existente para Adicionar Transação
-    const expenseRegex = /(gastei|despesa|gasto)[\s\S]*?(\d+[\.,]?\d*)\s*(.*)/i;
-    const incomeRegex = /(recebi|receita|ganho)[\s\S]*?(\d+[\.,]?\d*)\s*(.*)/i;
+    // --- Nova Lógica para comando "Dashboard" ---
+    if (lowerCaseMessage.includes('dashboard') || lowerCaseMessage.includes('link')) {
+        const dashboardUrl = `${process.env.FRONTEND_URL}?userId=${userId}`;
+        replyMessage = `Aqui está o link do seu dashboard financeiro: ${dashboardUrl}`;
+    }
+
+    if (replyMessage) {
+        await twilioClient.messages.create({
+          from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
+          to: from,
+          body: replyMessage
+        });
+        return res.status(200).send('Webhook received - command processed');
+    }
+
+    // --- Lógica de Criação de Transação ---
+    const expenseRegex = /(gastei|despesa|gasto)\s*(\d+[\.,]?\d*)\s*(.*)/i;
+    const incomeRegex = /(recebi|receita|ganho)\s*(\d+[\.,]?\d*)\s*(.*)/i;
 
     let type: 'income' | 'expense' | null = null;
     let amount: number | null = null;
@@ -104,28 +129,27 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       type = 'expense';
       amount = parseFloat(match[2].replace(',', '.'));
       description = match[3].trim();
-      console.log(`Mensagem corresponde a um gasto: Tipo=${type}, Valor=${amount}, Descrição=${description}`);
     } else {
       match = incomingMessage.match(incomeRegex);
       if (match) {
         type = 'income';
         amount = parseFloat(match[2].replace(',', '.'));
         description = match[3].trim();
-        console.log(`Mensagem corresponde a uma receita: Tipo=${type}, Valor=${amount}, Descrição=${description}`);
       }
     }
 
     if (type && amount !== null && description) {
       const category = getCategoryFromDescription(description);
-      console.log('Transação categorizada como:', category);
-      const newTransaction = new Transaction({ type, amount, description, category });
+      const newTransaction = new Transaction({ userId, type, amount, description, category });
       await newTransaction.save();
       
-      console.log('Transação salva com sucesso no banco de dados.');
+      console.log('Transação salva via WhatsApp:', newTransaction);
+      const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
+      
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
         to: from,
-        body: `Transação de ${type === 'expense' ? 'gasto' : 'receita'} de R$ ${amount.toFixed(2)} (${category}) registrada com sucesso!`
+        body: confirmationMessage
       });
       return res.status(200).send('Webhook received - transaction saved');
     } else {
@@ -133,7 +157,7 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
         to: from,
-        body: "Não entendi a transação. Tente 'gastei 50 no mercado' ou 'recebi 1000 de salário'. Para um relatório, use 'relatório de hoje', 'relatório do mês' ou 'relatório da semana'."
+        body: "Não entendi sua solicitação. Use 'gastei 50 no mercado', 'recebi 1000 salário', 'relatório do mês', 'dashboard' ou 'apagar [ID da transação]'."
       });
       return res.status(400).send('Invalid message format');
     }

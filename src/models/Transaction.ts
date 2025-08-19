@@ -1,6 +1,7 @@
 import { Schema, model, Document } from 'mongoose';
 
 export interface ITransaction extends Document {
+  userId: string; // Adicionamos este campo para identificar o usuário
   type: 'income' | 'expense';
   amount: number;
   description: string;
@@ -9,6 +10,7 @@ export interface ITransaction extends Document {
 }
 
 const transactionSchema = new Schema<ITransaction>({
+  userId: { type: String, required: true },
   type: { type: String, required: true, enum: ['income', 'expense'] },
   amount: { type: Number, required: true },
   description: { type: String, required: true },
