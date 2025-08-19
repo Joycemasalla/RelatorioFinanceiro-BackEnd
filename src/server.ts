@@ -16,6 +16,11 @@ app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
+// Rota de teste
+app.get('/', (req, res) => {
+  res.send('Servidor rodando!');
+});
+
 // Rotas da API
 app.use('/api', transactionRoutes);
 app.use('/api', twilioWebhook);
