@@ -26,22 +26,27 @@ router.post('/transactions', async (req: Request, res: Response) => {
 router.get('/transactions/:userId', async (req: Request, res: Response) => {
   const { userId } = req.params;
   try {
-    const transactions = await Transaction.find({ userId }).sort({ createdAt: -1 });
+    const transactions = await Transaction.find({
+        $or: [
+            { userId },
+            { userId: { $exists: false } }
+        ]
+    }).sort({ createdAt: -1 });
 
     const totalIncome = transactions
-      .filter(t => t.type === 'income')
+      .filter((t: ITransaction) => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0);
 
     const totalExpenses = transactions
-      .filter(t => t.type === 'expense')
+      .filter((t: ITransaction) => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
 
     const balance = totalIncome - totalExpenses;
 
     const categorySummary: Record<string, number> = {};
     transactions
-      .filter(t => t.type === 'expense')
-      .forEach(t => {
+      .filter((t: ITransaction) => t.type === 'expense')
+      .forEach((t: ITransaction) => {
         categorySummary[t.category] = (categorySummary[t.category] || 0) + t.amount;
       });
 
