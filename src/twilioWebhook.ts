@@ -17,15 +17,11 @@ const twilioClient = new Twilio(
 
 router.post('/twilio-webhook', async (req: Request, res: Response) => {
   const incomingMessage = req.body.Body;
-  const from = req.body.From; // Ex: whatsapp:+553288949994
-  const userId = req.body.WaId; // O ID único do usuário no WhatsApp
-
-  console.log('--- Webhook recebido ---');
-  console.log('Mensagem de:', from, ' | Corpo:', incomingMessage, ' | UserID:', userId);
+  const from = req.body.From;
+  const userId = req.body.WaId;
 
   try {
     if (!incomingMessage || !userId) {
-        console.log('Mensagem ou UserID inválido. Ignorando.');
         return res.status(400).send('Mensagem ou UserID inválido.');
     }
 
@@ -58,7 +54,7 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
 
     if (startDate && endDate) {
       const transactions = await Transaction.find({
-        userId, // Filtra por usuário
+        userId,
         createdAt: {
           $gte: startDate,
           $lte: endDate
@@ -86,13 +82,19 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       }
     }
     
-    // --- Nova Lógica para comando "Apagar" ---
+    // --- Lógica para comando "Apagar" ---
     const deleteRegex = /(apagar|remover|excluir)\s*(\S+)/i;
     const deleteMatch = lowerCaseMessage.match(deleteRegex);
 
     if (deleteMatch) {
       const transactionId = deleteMatch[2];
-      const transaction = await Transaction.findOneAndDelete({ _id: transactionId, userId });
+      const transaction = await Transaction.findOneAndDelete({
+        _id: transactionId,
+        $or: [
+          { userId },
+          { userId: { $exists: false } }
+        ]
+      });
 
       if (transaction) {
         replyMessage = `Transação "${transaction.description}" (ID: ${transaction._id}) foi excluída com sucesso.`;
@@ -101,7 +103,7 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       }
     }
 
-    // --- Nova Lógica para comando "Dashboard" ---
+    // --- Lógica para comando "Dashboard" ---
     if (lowerCaseMessage.includes('dashboard') || lowerCaseMessage.includes('link')) {
         const frontendUrl = process.env.FRONTEND_URL;
         replyMessage = `Aqui está o link do seu dashboard financeiro: ${frontendUrl}?userId=${userId}`;
@@ -116,48 +118,54 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
         return res.status(200).send('Webhook received - command processed');
     }
 
-    // --- Lógica de Criação de Transação ---
-    const expenseRegex = /(gastei|despesa|gasto)\s*(\d+[\.,]?\d*)\s*(.*)/i;
-    const incomeRegex = /(recebi|receita|ganho)\s*(\d+[\.,]?\d*)\s*(.*)/i;
+    // --- Nova lógica de Criação de Transação (mais simples) ---
+    const generalRegex = /(\d+[\.,]?\d*)\s*(.*)/i;
+    const incomeKeywords = ['recebi', 'receita', 'ganho', 'salário'];
 
     let type: 'income' | 'expense' | null = null;
     let amount: number | null = null;
     let description: string | null = null;
-    let match = incomingMessage.match(expenseRegex);
+    let match = incomingMessage.match(generalRegex);
 
     if (match) {
-      type = 'expense';
-      amount = parseFloat(match[2].replace(',', '.'));
-      description = match[3].trim();
-    } else {
-      match = incomingMessage.match(incomeRegex);
-      if (match) {
-        type = 'income';
-        amount = parseFloat(match[2].replace(',', '.'));
-        description = match[3].trim();
-      }
-    }
+      amount = parseFloat(match[1].replace(',', '.'));
+      description = match[2].trim();
 
-    if (type && amount !== null && description) {
-      const category = getCategoryFromDescription(description);
-      const newTransaction = new Transaction({ userId, type, amount, description, category });
-      await newTransaction.save();
+      // Verifica se a mensagem contém uma palavra-chave de receita
+      if (incomeKeywords.some(keyword => lowerCaseMessage.includes(keyword))) {
+        type = 'income';
+      } else {
+        type = 'expense';
+      }
       
-      console.log('Transação salva via WhatsApp:', newTransaction);
-      const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
-      
-      await twilioClient.messages.create({
-        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
-        to: from,
-        body: confirmationMessage
-      });
-      return res.status(200).send('Webhook received - transaction saved');
+      // Corrigido para garantir que a descrição não é nula
+      if (description) {
+        const category = getCategoryFromDescription(description);
+
+        const newTransaction = new Transaction({ userId, type, amount, description, category });
+        await newTransaction.save();
+        
+        const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
+        
+        await twilioClient.messages.create({
+          from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
+          to: from,
+          body: confirmationMessage
+        });
+        return res.status(200).send('Webhook received - transaction saved');
+      } else {
+          await twilioClient.messages.create({
+            from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
+            to: from,
+            body: "A descrição não pode ser nula."
+          });
+          return res.status(400).send('Invalid message format');
+      }
     } else {
-      console.log('Mensagem não reconhecida. Enviando mensagem de erro...');
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
         to: from,
-        body: "Não entendi sua solicitação. Use 'gastei 50 no mercado', 'recebi 1000 salário', 'relatório do mês', 'dashboard' ou 'apagar [ID da transação]'."
+        body: "Não entendi sua solicitação. Use '50 no mercado', 'recebi 1000 salário', 'relatório do mês', 'dashboard' ou 'apagar [ID da transação]'."
       });
       return res.status(400).send('Invalid message format');
     }
