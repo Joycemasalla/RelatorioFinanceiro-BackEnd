@@ -122,45 +122,46 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
     const generalRegex = /(\d+[\.,]?\d*)\s*(.*)/i;
     const incomeKeywords = ['recebi', 'receita', 'ganho', 'salário'];
 
-    let type: 'income' | 'expense' | null = null;
-    let amount: number | null = null;
-    let description: string | null = null;
-    let match = incomingMessage.match(generalRegex);
+    const match = incomingMessage.match(generalRegex);
 
     if (match) {
-      amount = parseFloat(match[1].replace(',', '.'));
-      description = match[2].trim();
-
-      // Verifica se a mensagem contém uma palavra-chave de receita
-      if (incomeKeywords.some(keyword => lowerCaseMessage.includes(keyword))) {
-        type = 'income';
-      } else {
-        type = 'expense';
-      }
+      const amount = parseFloat(match[1].replace(',', '.'));
+      const description = match[2]?.trim() || 'Transação'; // Valor padrão se description for vazia
       
-      // Corrigido para garantir que a descrição não é nula
-      if (description) {
-        const category = getCategoryFromDescription(description);
-
-        const newTransaction = new Transaction({ userId, type, amount, description, category });
-        await newTransaction.save();
-        
-        const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
-        
+      // Verificar se o amount é válido
+      if (isNaN(amount) || amount <= 0) {
         await twilioClient.messages.create({
           from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
           to: from,
-          body: confirmationMessage
+          body: 'Valor inválido. Por favor, informe um valor numérico válido maior que zero.'
         });
-        return res.status(200).send('Webhook received - transaction saved');
-      } else {
-          await twilioClient.messages.create({
-            from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
-            to: from,
-            body: "A descrição não pode ser nula."
-          });
-          return res.status(400).send('Invalid message format');
+        return res.status(400).send('Invalid amount');
       }
+
+      const type: 'income' | 'expense' = incomeKeywords.some(keyword => 
+        lowerCaseMessage.includes(keyword)
+      ) ? 'income' : 'expense';
+      
+      const category = getCategoryFromDescription(description);
+
+      const newTransaction = new Transaction({ 
+        userId, 
+        type, 
+        amount, 
+        description, 
+        category 
+      });
+      
+      await newTransaction.save();
+      
+      const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
+      
+      await twilioClient.messages.create({
+        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
+        to: from,
+        body: confirmationMessage
+      });
+      return res.status(200).send('Webhook received - transaction saved');
     } else {
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
@@ -169,6 +170,7 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       });
       return res.status(400).send('Invalid message format');
     }
+
   } catch (error) {
     console.error('Erro ao processar webhook do Twilio:', error);
     await twilioClient.messages.create({
