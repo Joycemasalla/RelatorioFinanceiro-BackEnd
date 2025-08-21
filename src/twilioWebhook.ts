@@ -27,6 +27,25 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
 
     const lowerCaseMessage = incomingMessage.toLowerCase().trim();
     
+    // --- Lógica para comando "Ajuda" (movida para o início) ---
+    if (lowerCaseMessage === 'ajuda' || lowerCaseMessage === 'comandos') {
+      const replyMessage = "Comandos disponíveis:\n\n" +
+        "• Registrar despesa: '50 no mercado'\n" +
+        "• Registrar receita: 'recebi 1000 salário'\n" +
+        "• Relatório: 'relatório de hoje' ou 'relatório do mês'\n" +
+        "• Ver dashboard: 'dashboard'\n" +
+        "• Apagar transação: 'apagar [ID da transação]'";
+
+      await twilioClient.messages.create({
+        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
+        to: from,
+        body: replyMessage
+      });
+      return res.status(200).send('Webhook received - help command processed');
+    }
+
+    // ... (restante do código para Relatório, Apagar, etc.)
+
     let replyMessage = '';
 
     // --- Lógica para comando "Relatório" ---
@@ -80,6 +99,13 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       } else {
           replyMessage += 'Nenhum gasto encontrado neste período.';
       }
+      
+      await twilioClient.messages.create({
+        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
+        to: from,
+        body: replyMessage
+      });
+      return res.status(200).send('Webhook received - command processed');
     }
     
     // --- Lógica para comando "Apagar" ---
@@ -101,15 +127,20 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       } else {
         replyMessage = `Não foi possível encontrar a transação com ID "${transactionId}" ou você não tem permissão para excluí-la.`;
       }
+
+      await twilioClient.messages.create({
+        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
+        to: from,
+        body: replyMessage
+      });
+      return res.status(200).send('Webhook received - command processed');
     }
 
     // --- Lógica para comando "Dashboard" ---
     if (lowerCaseMessage.includes('dashboard') || lowerCaseMessage.includes('link')) {
         const frontendUrl = process.env.FRONTEND_URL;
         replyMessage = `Aqui está o link do seu dashboard financeiro: ${frontendUrl}?userId=${userId}`;
-    }
 
-    if (replyMessage) {
         await twilioClient.messages.create({
           from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
           to: from,
@@ -118,40 +149,28 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
         return res.status(200).send('Webhook received - command processed');
     }
 
-    // --- Nova lógica de Criação de Transação (mais simples) ---
+    // --- Lógica de Criação de Transação ---
     const generalRegex = /(\d+[\.,]?\d*)\s*(.*)/i;
     const incomeKeywords = ['recebi', 'receita', 'ganho', 'salário'];
 
-    const match = incomingMessage.match(generalRegex);
+    let type: 'income' | 'expense' | null = null;
+    let amount: number | null = null;
+    let description: string | null = null;
+    let match = incomingMessage.match(generalRegex);
 
     if (match) {
-      const amount = parseFloat(match[1].replace(',', '.'));
-      const description = match[2]?.trim() || 'Transação'; // Valor padrão se description for vazia
-      
-      // Verificar se o amount é válido
-      if (isNaN(amount) || amount <= 0) {
-        await twilioClient.messages.create({
-          from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
-          to: from,
-          body: 'Valor inválido. Por favor, informe um valor numérico válido maior que zero.'
-        });
-        return res.status(400).send('Invalid amount');
+      amount = parseFloat(match[1].replace(',', '.'));
+      description = match[2]?.trim() || 'Transação';
+
+      if (incomeKeywords.some(keyword => lowerCaseMessage.includes(keyword))) {
+        type = 'income';
+      } else {
+        type = 'expense';
       }
-
-      const type: 'income' | 'expense' = incomeKeywords.some(keyword => 
-        lowerCaseMessage.includes(keyword)
-      ) ? 'income' : 'expense';
       
-      const category = getCategoryFromDescription(description);
+      const category = getCategoryFromDescription(description ?? 'Transação');
 
-      const newTransaction = new Transaction({ 
-        userId, 
-        type, 
-        amount, 
-        description, 
-        category 
-      });
-      
+      const newTransaction = new Transaction({ userId, type, amount, description, category });
       await newTransaction.save();
       
       const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
@@ -166,11 +185,10 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
         to: from,
-        body: "Não entendi sua solicitação. Use '50 no mercado', 'recebi 1000 salário', 'relatório do mês', 'dashboard' ou 'apagar [ID da transação]'."
+        body: "Não entendi sua solicitação. Envie 'ajuda' para ver a lista de comandos."
       });
       return res.status(400).send('Invalid message format');
     }
-
   } catch (error) {
     console.error('Erro ao processar webhook do Twilio:', error);
     await twilioClient.messages.create({
