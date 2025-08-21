@@ -64,11 +64,17 @@ router.get('/transactions/:userId', async (req: Request, res: Response) => {
   }
 });
 
-// NOVA ROTA: Rota para excluir uma transação específica de um usuário
+// Rota para excluir uma transação específica de um usuário
 router.delete('/transactions/:userId/:id', async (req: Request, res: Response) => {
   const { userId, id } = req.params;
   try {
-    const transaction = await Transaction.findOneAndDelete({ _id: id, userId });
+    const transaction = await Transaction.findOneAndDelete({
+      _id: id,
+      $or: [
+        { userId },
+        { userId: { $exists: false } }
+      ]
+    });
     
     if (!transaction) {
       return res.status(404).json({ message: 'Transação não encontrada ou não pertence a este usuário.' });
