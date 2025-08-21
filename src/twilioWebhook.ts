@@ -103,8 +103,8 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
 
     // --- Nova Lógica para comando "Dashboard" ---
     if (lowerCaseMessage.includes('dashboard') || lowerCaseMessage.includes('link')) {
-        const dashboardUrl = `${process.env.FRONTEND_URL}?userId=${userId}`;
-        replyMessage = `Aqui está o link do seu dashboard financeiro: ${dashboardUrl}`;
+        const frontendUrl = process.env.FRONTEND_URL;
+        replyMessage = `Aqui está o link do seu dashboard financeiro: ${frontendUrl}?userId=${userId}`;
     }
 
     if (replyMessage) {
