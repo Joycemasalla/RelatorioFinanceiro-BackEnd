@@ -35,7 +35,7 @@ router.get('/whatsapp-webhook', (req: Request, res: Response) => {
 });
 
 // Rota para receber mensagens do WhatsApp
-router.post('/whatsapp-webhook', async (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   const data = req.body;
   
   if (data.object === 'whatsapp_business_account') {
