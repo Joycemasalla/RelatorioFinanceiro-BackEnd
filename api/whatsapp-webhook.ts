@@ -10,7 +10,7 @@ const API_TOKEN = process.env.WHATSAPP_API_TOKEN;
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 const MONGO_URI = process.env.MONGO_URI;
 
-// Conexão com o MongoDB
+// **CORREÇÃO: Conexão com o MongoDB fora do handler**
 if (mongoose.connection.readyState === 0) {
     mongoose.connect(MONGO_URI!)
         .then(() => console.log('Conectado ao MongoDB Atlas'))
