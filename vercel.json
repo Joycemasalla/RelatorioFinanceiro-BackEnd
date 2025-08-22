@@ -1,8 +1,9 @@
 {
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/whatsapp-webhook",
-      "destination": "/api/whatsapp-webhook"
+      "src": "/api/whatsapp-webhook",
+      "dest": "/api/whatsapp-webhook.ts",
+      "methods": ["GET", "POST"]
     }
   ],
   "builds": [
