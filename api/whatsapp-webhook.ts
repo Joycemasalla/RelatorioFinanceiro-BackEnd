@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { Transaction, ITransaction } from '../src/models/Transaction';
 import { UserMapping, IUserMapping } from '../src/models/UserMapping';
 import { getCategoryFromDescription } from '../src/utils/categoryUtils';
