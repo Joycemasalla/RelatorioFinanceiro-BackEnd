@@ -1,15 +1,19 @@
 {
   "compilerOptions": {
-    "target": "es6",
+    "target": "es5",
     "module": "commonjs",
-    "rootDir": "./src",
+    "lib": [
+      "es6"
+    ],
     "outDir": "./dist",
-    "esModuleInterop": true,
+    "rootDir": "./",
     "strict": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "api/**/*"
   ]
 }

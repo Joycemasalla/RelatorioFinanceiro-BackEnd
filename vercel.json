@@ -1,13 +1,7 @@
 {
   "functions": {
     "api/whatsapp-webhook.ts": {
-      "includeFiles": "src/**"
+      "runtime": "@vercel/node@3.0.0"
     }
-  },
-  "routes": [
-    {
-      "src": "/api/whatsapp-webhook",
-      "dest": "/api/whatsapp-webhook.ts"
-    }
-  ]
+  }
 }
