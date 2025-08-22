@@ -25,7 +25,7 @@ app.get('/', (req, res) => {
 
 // Rotas da API
 app.use('/api', transactionRoutes);
-app.use('/api', whatsappWebhook);
+app.use("/api/whatsapp-webhook", whatsappWebhook);
 
 // Conexão com o MongoDB
 mongoose.connect(process.env.MONGO_URI!)
