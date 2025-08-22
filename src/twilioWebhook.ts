@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { Twilio } from 'twilio';
 import { Transaction, ITransaction } from './models/Transaction';
+import { UserMapping, IUserMapping } from './models/UserMapping';
 import { getCategoryFromDescription } from './utils/categoryUtils';
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import dotenv from 'dotenv';
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid'; // Importa a função para gerar UUIDs
 
 dotenv.config();
 
@@ -18,16 +20,31 @@ const twilioClient = new Twilio(
 router.post('/twilio-webhook', async (req: Request, res: Response) => {
   const incomingMessage = req.body.Body;
   const from = req.body.From;
-  const userId = req.body.WaId;
+  const waId = req.body.WaId; // Usamos waId para maior clareza
 
   try {
-    if (!incomingMessage || !userId) {
-        return res.status(400).send('Mensagem ou UserID inválido.');
+    if (!incomingMessage || !waId) {
+      return res.status(400).send('Mensagem ou WaId inválido.');
     }
 
+    // --- LÓGICA CRÍTICA DE MAPEAMENTO DE USUÁRIO ---
+    let userMapping = await UserMapping.findOne({ waId });
+    let userId;
+
+    if (!userMapping) {
+      // Se o usuário é novo, cria um dashboardUserId único
+      const newDashboardUserId = uuidv4();
+      userMapping = new UserMapping({ waId, dashboardUserId: newDashboardUserId });
+      await userMapping.save();
+      userId = newDashboardUserId;
+    } else {
+      userId = userMapping.dashboardUserId;
+    }
+    // --- FIM DA LÓGICA DE MAPEAMENTO ---
+
     const lowerCaseMessage = incomingMessage.toLowerCase().trim();
-    
-    // --- Lógica para comando "Ajuda" (movida para o início) ---
+
+    // Lógica para comando "Ajuda"
     if (lowerCaseMessage === 'ajuda' || lowerCaseMessage === 'comandos') {
       const replyMessage = "Comandos disponíveis:\n\n" +
         "• Registrar despesa: '50 no mercado'\n" +
@@ -44,15 +61,11 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       return res.status(200).send('Webhook received - help command processed');
     }
 
-    // ... (restante do código para Relatório, Apagar, etc.)
-
-    let replyMessage = '';
-
-    // --- Lógica para comando "Relatório" ---
+    // Lógica para comando "Relatório"
     let startDate: Date | null = null;
     let endDate: Date | null = null;
     let reportTitle = '';
-    
+
     if (lowerCaseMessage.includes('relatório do mês') || lowerCaseMessage.includes('gastos do mês')) {
       startDate = startOfMonth(new Date());
       endDate = endOfMonth(new Date());
@@ -73,7 +86,7 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
 
     if (startDate && endDate) {
       const transactions = await Transaction.find({
-        userId,
+        userId, // Usa o userId mapeado
         createdAt: {
           $gte: startDate,
           $lte: endDate
@@ -88,18 +101,18 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
         expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
       });
 
-      replyMessage += `${reportTitle}\n\n`;
+      let replyMessage = `${reportTitle}\n\n`;
       replyMessage += `Gasto total: R$ ${totalExpenses.toFixed(2)}\n\n`;
-      
+
       if (transactions.length > 0) {
-          replyMessage += 'Distribuição por Categoria:\n';
-          for (const category in expensesByCategory) {
-            replyMessage += `- ${category}: R$ ${expensesByCategory[category].toFixed(2)}\n`;
-          }
+        replyMessage += 'Distribuição por Categoria:\n';
+        for (const category in expensesByCategory) {
+          replyMessage += `- ${category}: R$ ${expensesByCategory[category].toFixed(2)}\n`;
+        }
       } else {
-          replyMessage += 'Nenhum gasto encontrado neste período.';
+        replyMessage += 'Nenhum gasto encontrado neste período.';
       }
-      
+
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
         to: from,
@@ -107,8 +120,8 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       });
       return res.status(200).send('Webhook received - command processed');
     }
-    
-    // --- Lógica para comando "Apagar" ---
+
+    // Lógica para comando "Apagar"
     const deleteRegex = /(apagar|remover|excluir)\s*(\S+)/i;
     const deleteMatch = lowerCaseMessage.match(deleteRegex);
 
@@ -116,12 +129,10 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       const transactionId = deleteMatch[2];
       const transaction = await Transaction.findOneAndDelete({
         _id: transactionId,
-        $or: [
-          { userId },
-          { userId: { $exists: false } }
-        ]
+        userId: userId // Usa o userId mapeado para exclusão segura
       });
 
+      let replyMessage = '';
       if (transaction) {
         replyMessage = `Transação "${transaction.description}" (ID: ${transaction._id}) foi excluída com sucesso.`;
       } else {
@@ -136,20 +147,20 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       return res.status(200).send('Webhook received - command processed');
     }
 
-    // --- Lógica para comando "Dashboard" ---
+    // Lógica para comando "Dashboard"
     if (lowerCaseMessage.includes('dashboard') || lowerCaseMessage.includes('link')) {
-        const frontendUrl = process.env.FRONTEND_URL;
-        replyMessage = `Aqui está o link do seu dashboard financeiro: ${frontendUrl}?userId=${userId}`;
+      const frontendUrl = process.env.FRONTEND_URL;
+      const replyMessage = `Aqui está o link do seu dashboard financeiro: ${frontendUrl}?userId=${userId}`;
 
-        await twilioClient.messages.create({
-          from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
-          to: from,
-          body: replyMessage
-        });
-        return res.status(200).send('Webhook received - command processed');
+      await twilioClient.messages.create({
+        from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
+        to: from,
+        body: replyMessage
+      });
+      return res.status(200).send('Webhook received - command processed');
     }
 
-    // --- Lógica de Criação de Transação ---
+    // Lógica de Criação de Transação
     const generalRegex = /(\d+[\.,]?\d*)\s*(.*)/i;
     const incomeKeywords = ['recebi', 'receita', 'ganho', 'salário'];
 
@@ -167,14 +178,14 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
       } else {
         type = 'expense';
       }
-      
+
       const category = getCategoryFromDescription(description ?? 'Transação');
 
       const newTransaction = new Transaction({ userId, type, amount, description, category });
       await newTransaction.save();
-      
+
       const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
-      
+
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
         to: from,

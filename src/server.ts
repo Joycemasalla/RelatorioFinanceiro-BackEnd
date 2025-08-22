@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import transactionRoutes from './routes/transaction';
 import twilioWebhook from './twilioWebhook';
 import bodyParser from 'body-parser';
+import './models/UserMapping';
+
 
 dotenv.config();
 
