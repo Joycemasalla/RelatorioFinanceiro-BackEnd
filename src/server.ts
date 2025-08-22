@@ -3,7 +3,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import transactionRoutes from './routes/transaction';
-import twilioWebhook from './twilioWebhook';
+import whatsappWebhook from './whatsappWebhook';
 import bodyParser from 'body-parser';
 import './models/UserMapping';
 
@@ -25,7 +25,7 @@ app.get('/', (req, res) => {
 
 // Rotas da API
 app.use('/api', transactionRoutes);
-app.use('/api', twilioWebhook);
+app.use('/api', whatsappWebhook);
 
 // Conexão com o MongoDB
 mongoose.connect(process.env.MONGO_URI!)
