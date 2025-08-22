@@ -1,11 +1,4 @@
 {
-  "routes": [
-    {
-      "src": "/api/whatsapp-webhook",
-      "dest": "/api/whatsapp-webhook.ts",
-      "methods": ["GET", "POST"]
-    }
-  ],
   "builds": [
     {
       "src": "api/whatsapp-webhook.ts",
