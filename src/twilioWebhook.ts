@@ -188,16 +188,19 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
 
       const category = getCategoryFromDescription(description ?? 'Transação');
 
-       const newTransaction = new Transaction({ userId, type, amount, description, category });
+      const newTransaction = new Transaction({ userId, type, amount, description, category });
       console.log('Tentando salvar nova transação:', newTransaction);
       await newTransaction.save();
       console.log('Transação salva com sucesso!');
-      
+
       const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
-      
+
+      // Verificação do formato do número
+      const toPhoneNumber = from.startsWith('whatsapp:+') ? from : `whatsapp:+${from.split(':')[1]}`;
+
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
-        to: from,
+        to: toPhoneNumber,
         body: confirmationMessage
       });
       return res.status(200).send('Webhook received - transaction saved');
