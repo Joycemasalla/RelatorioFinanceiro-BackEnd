@@ -20,25 +20,32 @@ const twilioClient = new Twilio(
 router.post('/twilio-webhook', async (req: Request, res: Response) => {
   const incomingMessage = req.body.Body;
   const from = req.body.From;
-  const waId = req.body.WaId; // Usamos waId para maior clareza
+  const waId = req.body.WaId;
 
   try {
+    console.log('Webhook acionado. Mensagem recebida:', incomingMessage);
+    console.log('waId:', waId);
+
     if (!incomingMessage || !waId) {
-      return res.status(400).send('Mensagem ou WaId inválido.');
+      console.error('Mensagem ou WaId inválido.');
+      return res.status(400).send('Mensagem ou UserID inválido.');
     }
 
     // --- LÓGICA CRÍTICA DE MAPEAMENTO DE USUÁRIO ---
+    console.log('Iniciando mapeamento de usuário...');
     let userMapping = await UserMapping.findOne({ waId });
     let userId;
 
     if (!userMapping) {
-      // Se o usuário é novo, cria um dashboardUserId único
+      console.log('Usuário não encontrado. Criando novo mapeamento...');
       const newDashboardUserId = uuidv4();
       userMapping = new UserMapping({ waId, dashboardUserId: newDashboardUserId });
       await userMapping.save();
       userId = newDashboardUserId;
+      console.log('Novo usuário mapeado com sucesso. userId:', userId);
     } else {
       userId = userMapping.dashboardUserId;
+      console.log('Usuário encontrado. userId:', userId);
     }
     // --- FIM DA LÓGICA DE MAPEAMENTO ---
 
@@ -181,11 +188,13 @@ router.post('/twilio-webhook', async (req: Request, res: Response) => {
 
       const category = getCategoryFromDescription(description ?? 'Transação');
 
-      const newTransaction = new Transaction({ userId, type, amount, description, category });
+       const newTransaction = new Transaction({ userId, type, amount, description, category });
+      console.log('Tentando salvar nova transação:', newTransaction);
       await newTransaction.save();
-
+      console.log('Transação salva com sucesso!');
+      
       const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
-
+      
       await twilioClient.messages.create({
         from: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
         to: from,
