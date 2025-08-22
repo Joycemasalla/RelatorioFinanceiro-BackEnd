@@ -1,20 +1,23 @@
 {
-  "functions": {
-    "api/whatsapp-webhook.ts": {
-      "includeFiles": "src/**"
-    }
-  },
   "rewrites": [
     {
-      "source": "/api/whatsapp-webhook",
-      "destination": "/api/whatsapp-webhook"
+      "source": "/api/(.*)",
+      "destination": "/backend/api/$1"
     }
   ],
-  "build": {
-    "env": {
+  "builds": [
+    {
+      "src": "backend/api/whatsapp-webhook.ts",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "backend/package.json",
+      "use": "@vercel/node"
+    }
+  ],
+  "env": {
       "MONGO_URI": "@mongo_uri",
       "WHATSAPP_API_TOKEN": "@whatsapp_api_token",
       "WHATSAPP_VERIFY_TOKEN": "@whatsapp_verify_token"
-    }
   }
 }
