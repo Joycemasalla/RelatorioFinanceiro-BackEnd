@@ -17,7 +17,7 @@ const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
 
 // Rota para verificação do webhook
-router.get('/whatsapp-webhook', (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
