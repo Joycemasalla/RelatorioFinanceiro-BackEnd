@@ -21,7 +21,11 @@ router.get('/', (req: Request, res: Response) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-
+  // Na parte da verificação, adicione estes logs:
+  console.log('Token recebido:', token);
+  console.log('Token esperado:', VERIFY_TOKEN);
+  console.log('Tokens são iguais?', token === VERIFY_TOKEN);
+  
   if (mode && token) {
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
       console.log('Webhook verificado!');
@@ -37,7 +41,7 @@ router.get('/', (req: Request, res: Response) => {
 // Rota para receber mensagens do WhatsApp
 router.post('/', async (req: Request, res: Response) => {
   const data = req.body;
-  
+
   if (data.object === 'whatsapp_business_account') {
     try {
       for (const entry of data.entry) {
@@ -46,13 +50,13 @@ router.post('/', async (req: Request, res: Response) => {
             for (const message of change.value.messages) {
               const incomingMessage = message.text.body;
               const waId = message.from;
-              
+
               if (!incomingMessage || !waId) {
                 return res.status(400).send('Mensagem ou WaId inválido.');
               }
-              
+
               const lowerCaseMessage = incomingMessage.toLowerCase().trim();
-              
+
               let userMapping = await UserMapping.findOne({ waId });
               let userId;
 
@@ -79,7 +83,7 @@ router.post('/', async (req: Request, res: Response) => {
                   },
                 });
               };
-              
+
               // --- Lógica de Comandos (a mesma que já está funcionando) ---
               if (lowerCaseMessage === 'ajuda' || lowerCaseMessage === 'comandos') {
                 const replyMessage = "Comandos disponíveis:\n\n" +
@@ -91,7 +95,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await sendMessage(replyMessage);
                 return res.status(200).send('Webhook received - help command processed');
               }
-              
+
               // ... (O restante da sua lógica para 'Relatório', 'Apagar', etc.
               // deve ser copiada e colada aqui, substituindo twilioClient.messages.create
               // por `await sendMessage(replyMessage)`
@@ -120,7 +124,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await newTransaction.save();
 
                 const confirmationMessage = `Transação salva com sucesso!\nDetalhes:\n- Tipo: ${type === 'expense' ? 'Gasto' : 'Receita'}\n- Valor: R$ ${amount.toFixed(2)}\n- Descrição: ${description}\n- Categoria: ${category}\n- ID: ${newTransaction._id}`;
-                
+
                 await sendMessage(confirmationMessage);
                 return res.status(200).send('Webhook received - transaction saved');
               } else {

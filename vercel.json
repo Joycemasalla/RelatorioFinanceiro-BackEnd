@@ -2,6 +2,7 @@
   "functions": {
     "api/whatsapp-webhook.ts": {
       "runtime": "@vercel/node@3.0.0"
+ 
     }
   }
 }
