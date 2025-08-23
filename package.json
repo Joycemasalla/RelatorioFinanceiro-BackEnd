@@ -6,7 +6,8 @@
     "start": "node dist/server.js",
     "dev": "nodemon --exec ts-node src/server.ts",
     "dev:vercel": "vercel dev",
-    "build": "tsc"
+    "build": "tsc",
+    "vercel-build": "tsc"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",
