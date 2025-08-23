@@ -14,7 +14,7 @@ interface ITransaction extends Document {
   amount: number;
   description: string;
   category: string;
-  date: Date;
+  createdAt: Date;
 }
 
 interface IUserMapping extends Document {
@@ -29,7 +29,7 @@ const TransactionSchema: Schema = new Schema({
   amount: { type: Number, required: true },
   description: { type: String, required: true },
   category: { type: String, required: true },
-  date: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
 });
 
 const UserMappingSchema: Schema = new Schema({
@@ -37,11 +37,11 @@ const UserMappingSchema: Schema = new Schema({
   dashboardUserId: { type: String, required: true, unique: true },
 });
 
-// Models (com verificação para evitar re-compilação)
+// Models
 const Transaction = mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema);
 const UserMapping = mongoose.models.UserMapping || mongoose.model<IUserMapping>('UserMapping', UserMappingSchema);
 
-// Utilitário para categorização
+// Utility function
 const getCategoryFromDescription = (description: string): string => {
   const lowerCaseDesc = description.toLowerCase();
   if (lowerCaseDesc.includes('mercado') || lowerCaseDesc.includes('supermercado') || lowerCaseDesc.includes('compras')) return 'Mercado';
@@ -54,7 +54,7 @@ const getCategoryFromDescription = (description: string): string => {
   return 'Outros';
 };
 
-// Conexão com MongoDB (com cache para evitar múltiplas conexões)
+// MongoDB connection with cache
 let cachedConnection: typeof mongoose | null = null;
 
 const connectToDatabase = async () => {
@@ -76,23 +76,30 @@ const connectToDatabase = async () => {
   }
 };
 
-// Handler principal da função serverless
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   try {
-    // Conectar ao banco
     await connectToDatabase();
 
     if (req.method === 'GET') {
-      // Verificação do webhook
+      // Webhook verification
       const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
 
-      console.log('Verificação do webhook:', { mode, token: token ? 'presente' : 'ausente', challenge });
+      console.log('Webhook verification:', { mode, token: token ? 'present' : 'missing', challenge });
 
       if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-        console.log('Webhook verificado com sucesso!');
+        console.log('Webhook verified successfully!');
         return res.status(200).send(challenge as string);
       } else {
-        console.log('Falha na verificação do webhook');
+        console.log('Webhook verification failed');
         return res.status(403).send('Forbidden');
       }
     }
@@ -101,10 +108,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const data = req.body;
 
       if (!data || data.object !== 'whatsapp_business_account') {
-        return res.status(400).json({ error: 'Dados inválidos' });
+        return res.status(400).json({ error: 'Invalid data' });
       }
 
-      // Processar mensagens
+      // Process messages
       for (const entry of data.entry || []) {
         for (const change of entry.changes || []) {
           if (change.value?.messages) {
@@ -118,7 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
               const lowerCaseMessage = incomingMessage.toLowerCase().trim();
 
-              // Gerenciar mapeamento de usuário
+              // User mapping management
               let userMapping = await UserMapping.findOne({ waId });
               let userId;
 
@@ -131,22 +138,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 userId = userMapping.dashboardUserId;
               }
 
-              // Função para enviar mensagem
+              // Send message function
               const sendMessage = async (body: string) => {
-                const url = `https://graph.facebook.com/v20.0/${change.value.metadata.phone_number_id}/messages`;
-                await axios.post(url, {
-                  messaging_product: 'whatsapp',
-                  to: waId,
-                  text: { body },
-                }, {
-                  headers: {
-                    'Authorization': `Bearer ${API_TOKEN}`,
-                    'Content-Type': 'application/json',
-                  },
-                });
+                if (!API_TOKEN) {
+                  console.error('WhatsApp API token not configured');
+                  return;
+                }
+
+                try {
+                  const url = `https://graph.facebook.com/v20.0/${change.value.metadata.phone_number_id}/messages`;
+                  await axios.post(url, {
+                    messaging_product: 'whatsapp',
+                    to: waId,
+                    text: { body },
+                  }, {
+                    headers: {
+                      'Authorization': `Bearer ${API_TOKEN}`,
+                      'Content-Type': 'application/json',
+                    },
+                  });
+                } catch (error) {
+                  console.error('Error sending message:', error);
+                }
               };
 
-              // Processar comandos
+              // Process commands
               if (lowerCaseMessage === 'ajuda' || lowerCaseMessage === 'comandos') {
                 const replyMessage = "Comandos disponíveis:\n\n" +
                   "• Registrar despesa: '50 no mercado'\n" +
@@ -158,7 +174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 continue;
               }
 
-              // Processar transação
+              // Process transaction
               const generalRegex = /(\d+[\.,]?\d*)\s*(.*)/i;
               const incomeKeywords = ['recebi', 'receita', 'ganho', 'salário'];
               const match = incomingMessage.match(generalRegex);
@@ -186,11 +202,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ status: 'success' });
     }
 
-    // Método não permitido
     return res.status(405).json({ error: 'Method Not Allowed' });
 
   } catch (error) {
-    console.error('Erro no webhook:', error);
+    console.error('Webhook error:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 }

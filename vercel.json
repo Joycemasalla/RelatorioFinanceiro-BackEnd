@@ -1,7 +1,13 @@
 {
   "functions": {
-    "api/*.ts": {
+    "api/**/*.ts": {
       "runtime": "@vercel/node@3.0.0"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/whatsapp-webhook",
+      "destination": "/api/whatsapp-webhook"
+    }
+  ]
 }
