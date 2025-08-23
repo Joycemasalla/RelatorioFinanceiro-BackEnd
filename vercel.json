@@ -9,5 +9,12 @@
       "source": "/api/whatsapp-webhook",
       "destination": "/api/whatsapp-webhook"
     }
-  ]
+  ],
+  "build": {
+    "env": {
+      "NODE_VERSION": "20"
+    }
+  },
+  "installCommand": "npm install",
+  "buildCommand": "npm run build"
 }

@@ -4,6 +4,7 @@
   "main": "api/index.js",
   "scripts": {
     "dev": "vercel dev",
+    "build": "echo 'Build completed - using serverless functions'",
     "deploy": "vercel --prod"
   },
   "dependencies": {
@@ -15,6 +16,9 @@
   },
   "devDependencies": {
     "vercel": "latest"
+  },
+  "engines": {
+    "node": "20.x"
   },
   "keywords": [],
   "author": "",
