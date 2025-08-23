@@ -1,12 +1,22 @@
 {
   "name": "finance-app-backend",
   "version": "1.0.0",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "tsc",
+    "start": "vercel dev --listen 3001",
+    "deploy": "vercel --prod"
+  },
   "dependencies": {
     "@vercel/node": "^3.0.0",
     "mongoose": "^8.18.0",
     "axios": "^1.11.0",
     "uuid": "^11.1.0",
     "@types/uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
   },
   "engines": {
     "node": "18.x"

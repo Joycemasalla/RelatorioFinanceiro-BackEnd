@@ -10,5 +10,10 @@
       "src": "/api/(.*)",
       "dest": "/api/$1"
     }
-  ]
+  ],
+  "env": {
+    "WHATSAPP_API_TOKEN": "@whatsapp_api_token",
+    "WHATSAPP_VERIFY_TOKEN": "@whatsapp_verify_token", 
+    "MONGO_URI": "@mongo_uri"
+  }
 }
