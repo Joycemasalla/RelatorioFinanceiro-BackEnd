@@ -92,18 +92,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'GET') {
       // Buscar transações
-      const { userId } = req.query;
+      let { userId } = req.query;
       
-      if (!userId) {
-        return res.status(400).json({ message: 'userId é obrigatório' });
-      }
+      // Se não tem userId, busca todas as transações (para compatibilidade)
+      const query = userId 
+        ? {
+            $or: [
+              { userId },
+              { userId: { $exists: false } }
+            ]
+          }
+        : {};
 
-      const transactions = await Transaction.find({
-        $or: [
-          { userId },
-          { userId: { $exists: false } }
-        ]
-      }).sort({ createdAt: -1 });
+      const transactions = await Transaction.find(query).sort({ createdAt: -1 });
 
       const totalIncome = transactions
         .filter((t: ITransaction) => t.type === 'income')
